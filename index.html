@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tetris for Maja</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <section id="start-screen" class="start-screen">
+      <div class="start-card">
+        <h2 class="start-title">Player Select</h2>
+        <label class="field">
+          <span class="field-label">Name</span>
+          <input
+            id="player-name-input"
+            type="text"
+            maxlength="16"
+            autocomplete="off"
+            placeholder="ENTER NAME"
+          />
+        </label>
+        <button id="start-game-btn" class="primary-btn" type="button" disabled>
+          Start Game
+        </button>
+
+        <section class="leaderboard">
+          <h3 class="leaderboard-title">High Scores</h3>
+          <ol id="leaderboard-list" class="leaderboard-list"></ol>
+        </section>
+      </div>
+    </section>
+
+    <div id="game-root" class="game-root">
+      <div class="app">
+        <header class="app-header">
+          <h1 class="app-title">VIBE TETRIS</h1>
+          <p class="app-subtitle">Insert vibes · Press Start</p>
+        </header>
+
+        <main class="app-main">
+          <section class="game-shell">
+            <aside class="side-panel side-panel--left">
+              <div class="panel hold-panel">
+                <h2>Hold</h2>
+                <canvas
+                  id="hold-canvas"
+                  width="96"
+                  height="96"
+                  aria-label="Held piece"
+                ></canvas>
+              </div>
+
+              <div class="panel stats-panel">
+                <h2>Stats</h2>
+                <div class="stat-row">
+                  <span>Score</span>
+                  <span id="score-value">0</span>
+                </div>
+                <div class="stat-row">
+                  <span>Lines</span>
+                  <span id="lines-value">0</span>
+                </div>
+                <div class="stat-row">
+                  <span>Level</span>
+                  <span id="level-value">1</span>
+                </div>
+              </div>
+            </aside>
+
+            <div class="board-panel">
+              <canvas
+                id="game-canvas"
+                width="200"
+                height="400"
+                aria-label="Tetris game board"
+              ></canvas>
+
+              <div class="panel controls-panel controls-panel--compact">
+                <div class="button-row">
+                  <button id="start-btn" type="button">Start</button>
+                  <button id="pause-btn" type="button">Pause</button>
+                  <button id="restart-btn" type="button">Restart</button>
+                </div>
+              </div>
+            </div>
+
+            <aside class="side-panel side-panel--right">
+              <div class="panel preview-panel">
+                <h2>Next</h2>
+                <div class="next-grid">
+                  <canvas
+                    id="next1-canvas"
+                    width="96"
+                    height="96"
+                    aria-label="Next piece 1"
+                  ></canvas>
+                  <canvas
+                    id="next2-canvas"
+                    width="96"
+                    height="96"
+                    aria-label="Next piece 2"
+                  ></canvas>
+                  <canvas
+                    id="next3-canvas"
+                    width="96"
+                    height="96"
+                    aria-label="Next piece 3"
+                  ></canvas>
+                </div>
+              </div>
+
+              <div class="panel controls-panel controls-panel--help">
+                <h2>Controls</h2>
+                <ul class="controls-list">
+                  <li>← / → : Move</li>
+                  <li>↑ : Rotate</li>
+                  <li>↓ / PgDn : Soft drop</li>
+                  <li>C : Hold</li>
+                  <li>Space : Hard drop</li>
+                  <li>P : Pause</li>
+                </ul>
+              </div>
+            </aside>
+          </section>
+
+          <section id="overlay" class="overlay overlay--hidden" aria-hidden="true">
+            <div class="overlay-content">
+              <h2 id="overlay-title">Paused</h2>
+              <p id="overlay-message">Press Start to begin</p>
+              <button id="overlay-restart-btn" type="button">Play Again</button>
+            </div>
+          </section>
+        </main>
+
+        <footer class="app-footer">
+          <p>Built for fun – tweak, remix, and vibe.</p>
+        </footer>
+      </div>
+    </div>
+
+    <script src="scale.js" defer></script>
+    <script src="game.js" defer></script>
+  </body>
+  </html>
+
