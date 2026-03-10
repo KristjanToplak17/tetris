@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tetris for Maja</title>
+    <title>Tetris za Majo</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -40,8 +40,10 @@
     <div id="game-root" class="game-root">
       <div class="app">
         <header class="app-header">
-          <h1 class="app-title">VIBE TETRIS</h1>
-          <p class="app-subtitle">Insert vibes · Press Start</p>
+          <h1 class="app-title">
+            <span class="title-emoji">🐣</span> Tetris za Majo <span class="title-emoji">🐣</span>
+          </h1>
+          <p class="app-subtitle">Z ljubeznijo tvoj najljubši fant.</p>
         </header>
 
         <main class="app-main">
@@ -148,12 +150,13 @@
         </main>
 
         <footer class="app-footer">
-          <p>Built for fun – tweak, remix, and vibe.</p>
+          <p id="daily-quote" class="app-quote" aria-live="polite"></p>
         </footer>
       </div>
     </div>
 
     <script src="scale.js" defer></script>
+    <script src="quote.js" defer></script>
     <script src="game.js" defer></script>
   </body>
   </html>

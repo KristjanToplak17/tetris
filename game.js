@@ -1,9 +1,14 @@
 const COLS = 10;
 const ROWS = 20;
-const BLOCK_SIZE = 20; // 10 * 20 = 200 width, 20 * 20 = 400 height
+const BLOCK_SIZE = 24; // 10 * 24 = 240 width, 20 * 24 = 480 height
+const MINI_CELL_SIZE = 20;
+const MINI_GRID_SIZE = 4;
+const MINI_CANVAS_SIZE = MINI_CELL_SIZE * MINI_GRID_SIZE;
 
 const canvas = document.getElementById("game-canvas");
 const ctx = canvas.getContext("2d");
+canvas.width = COLS * BLOCK_SIZE;
+canvas.height = ROWS * BLOCK_SIZE;
 
 const next1Canvas = document.getElementById("next1-canvas");
 const next2Canvas = document.getElementById("next2-canvas");
@@ -16,6 +21,14 @@ const nextContexts = [
 
 const holdCanvas = document.getElementById("hold-canvas");
 const holdCtx = holdCanvas.getContext("2d");
+next1Canvas.width = MINI_CANVAS_SIZE;
+next1Canvas.height = MINI_CANVAS_SIZE;
+next2Canvas.width = MINI_CANVAS_SIZE;
+next2Canvas.height = MINI_CANVAS_SIZE;
+next3Canvas.width = MINI_CANVAS_SIZE;
+next3Canvas.height = MINI_CANVAS_SIZE;
+holdCanvas.width = MINI_CANVAS_SIZE;
+holdCanvas.height = MINI_CANVAS_SIZE;
 
 const scoreEl = document.getElementById("score-value");
 const linesEl = document.getElementById("lines-value");
@@ -78,18 +91,16 @@ function clearBoard() {
 
 let board = clearBoard();
 
-const COLORS = {
-  0: "transparent",
-  1: "#22c55e",
-  2: "#3b82f6",
-  3: "#eab308",
-  4: "#ec4899",
-  5: "#f97316",
-  6: "#a855f7",
-  7: "#06b6d4",
-};
-
 const PIECE_TYPES = ["I", "O", "T", "S", "Z", "J", "L"];
+const TETROMINO_COLORS = Object.freeze({
+  I: "#2DD4D7", // cyan
+  J: "#2563EB", // blue
+  L: "#F97316", // orange
+  O: "#FACC15", // yellow
+  S: "#22C55E", // green
+  Z: "#EF4444", // red
+  T: "#A855F7", // purple
+});
 
 const PIECE_DEFS = {
   I: {
@@ -156,6 +167,15 @@ const PIECE_DEFS = {
     ],
   },
 };
+
+const PIECE_ID_TO_TYPE = Object.freeze(
+  Object.fromEntries(Object.entries(PIECE_DEFS).map(([type, def]) => [def.id, type]))
+);
+
+function getColorForCellValue(value) {
+  const type = PIECE_ID_TO_TYPE[value];
+  return type ? TETROMINO_COLORS[type] : "#ffffff";
+}
 
 function rotateMatrix(matrix) {
   const size = matrix.length;
@@ -559,7 +579,7 @@ function rotateCurrent() {
 
 function drawCell(context, x, y, value, size) {
   if (!value) return;
-  const color = COLORS[value] || "#ffffff";
+  const color = getColorForCellValue(value);
   const px = x * size;
   const py = y * size;
 
@@ -569,27 +589,30 @@ function drawCell(context, x, y, value, size) {
   let fill = cache.get(gradKey);
   if (!fill) {
     const g = context.createLinearGradient(0, 0, size, size);
-    g.addColorStop(0, color);
-    g.addColorStop(1, "rgba(255,255,255,0.18)");
+    g.addColorStop(0, "rgba(255,255,255,0.9)");
+    g.addColorStop(0.2, color);
+    g.addColorStop(1, color);
     fill = g;
     cache.set(gradKey, fill);
   }
 
   context.save();
   context.shadowColor = color;
-  context.shadowBlur = 10;
+  context.shadowBlur = 12;
   context.fillStyle = fill;
   context.fillRect(px + 1, py + 1, size - 2, size - 2);
+  context.fillStyle = "rgba(255,255,255,0.16)";
+  context.fillRect(px + 2, py + 2, size - 6, Math.max(2, size * 0.22));
   context.restore();
 
-  context.strokeStyle = "rgba(15,23,42,0.9)";
+  context.strokeStyle = "rgba(15,23,42,0.78)";
   context.lineWidth = 1;
   context.strokeRect(px + 0.5, py + 0.5, size - 1, size - 1);
 }
 
 function drawGhostCell(context, x, y, value, size) {
   if (!value) return;
-  const color = COLORS[value] || "#ffffff";
+  const color = getColorForCellValue(value);
   const px = x * size;
   const py = y * size;
   context.save();
@@ -703,14 +726,36 @@ function drawBoard() {
 }
 
 function drawMiniPiece(context, piece) {
-  context.clearRect(0, 0, 96, 96);
-  drawGridLines(context, 4, 4, 20);
+  context.clearRect(0, 0, MINI_CANVAS_SIZE, MINI_CANVAS_SIZE);
+  drawGridLines(context, MINI_GRID_SIZE, MINI_GRID_SIZE, MINI_CELL_SIZE);
   if (!piece) return;
   const { shape, id } = piece;
+  let minX = shape[0].length;
+  let minY = shape.length;
+  let maxX = -1;
+  let maxY = -1;
+
   for (let y = 0; y < shape.length; y++) {
     for (let x = 0; x < shape[y].length; x++) {
       if (!shape[y][x]) continue;
-      drawCell(context, x, y, id, 20);
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+  }
+
+  if (maxX < minX || maxY < minY) return;
+
+  const pieceWidthPx = (maxX - minX + 1) * MINI_CELL_SIZE;
+  const pieceHeightPx = (maxY - minY + 1) * MINI_CELL_SIZE;
+  const offsetXCells = (MINI_CANVAS_SIZE - pieceWidthPx) / (2 * MINI_CELL_SIZE) - minX;
+  const offsetYCells = (MINI_CANVAS_SIZE - pieceHeightPx) / (2 * MINI_CELL_SIZE) - minY;
+
+  for (let y = 0; y < shape.length; y++) {
+    for (let x = 0; x < shape[y].length; x++) {
+      if (!shape[y][x]) continue;
+      drawCell(context, x + offsetXCells, y + offsetYCells, id, MINI_CELL_SIZE);
     }
   }
 }
