@@ -33,7 +33,8 @@ const overlayRestartBtn = document.getElementById("overlay-restart-btn");
 const startScreen = document.getElementById("start-screen");
 const playerNameInput = document.getElementById("player-name-input");
 const startGameBtnMain = document.getElementById("start-game-btn");
-const leaderboardList = document.getElementById("leaderboard-list");
+const leaderboardListStart = document.getElementById("leaderboard-list");
+const leaderboardListGameOver = document.getElementById("leaderboard-list-gameover");
 
 const audio = {
   move: new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA="),
@@ -207,8 +208,8 @@ let displayScore = 0;
 
 const GRAVITY_MS_BY_LEVEL = [
   0,
-  800, 720, 630, 550, 470, 400, 330, 270, 220, 180,
-  150, 130, 115, 105, 95, 85, 75, 70, 65, 60,
+  600, 520, 440, 370, 310, 260, 220, 190, 160, 135,
+  115, 100, 90, 80, 70, 60, 55, 50, 48, 45,
 ];
 
 function getGravityMsForLevel(lvl) {
@@ -291,10 +292,10 @@ function saveLeaderboard(entries) {
 }
 
 function addLeaderboardEntry(name, scoreValue, linesValue, levelValue) {
-  if (!name) return;
+  const safeName = (name && name.trim()) || "Player";
   const entries = loadLeaderboard();
   entries.push({
-    name,
+    name: safeName,
     score: scoreValue,
     lines: linesValue,
     level: levelValue,
@@ -308,15 +309,23 @@ function addLeaderboardEntry(name, scoreValue, linesValue, levelValue) {
 
 function renderLeaderboard() {
   const entries = loadLeaderboard();
-  leaderboardList.innerHTML = "";
+  const targets = [leaderboardListStart, leaderboardListGameOver].filter(Boolean);
+  targets.forEach((list) => {
+    list.innerHTML = "";
+  });
+
   if (!entries.length) {
-    const li = document.createElement("li");
-    li.textContent = "No scores yet. Be the first!";
-    leaderboardList.appendChild(li);
+    targets.forEach((list) => {
+      const li = document.createElement("li");
+      li.textContent = "No scores yet. Be the first!";
+      list.appendChild(li);
+    });
     return;
   }
 
-  entries.forEach((entry, index) => {
+  const topFive = entries.slice(0, 5);
+
+  topFive.forEach((entry, index) => {
     const li = document.createElement("li");
     const rank = document.createElement("span");
     const name = document.createElement("span");
@@ -333,7 +342,10 @@ function renderLeaderboard() {
     li.appendChild(rank);
     li.appendChild(name);
     li.appendChild(scoreValue);
-    leaderboardList.appendChild(li);
+
+    targets.forEach((list) => {
+      list.appendChild(li.cloneNode(true));
+    });
   });
 }
 
@@ -501,20 +513,47 @@ function movePiece(dir) {
   }
 }
 
+function tryApplyRotationWithKicks(piece, rotatedShape) {
+  const originalShape = piece.shape;
+  const originalX = piece.x;
+  const originalY = piece.y;
+
+  piece.shape = rotatedShape;
+
+  const kicks = [
+    [0, 0],
+    [-1, 0],
+    [1, 0],
+    [-2, 0],
+    [2, 0],
+  ];
+
+  for (let i = 0; i < kicks.length; i++) {
+    const [dx, dy] = kicks[i];
+    if (!collides(board, piece, dx, dy)) {
+      piece.x += dx;
+      piece.y += dy;
+      return true;
+    }
+  }
+
+  piece.shape = originalShape;
+  piece.x = originalX;
+  piece.y = originalY;
+  return false;
+}
+
 function rotateCurrent() {
   if (!currentPiece) return;
   const rotated = rotateMatrix(currentPiece.shape);
-  const originalShape = currentPiece.shape;
-  currentPiece.shape = rotated;
+  if (!tryApplyRotationWithKicks(currentPiece, rotated)) {
+    return;
+  }
 
-  if (collides(board, currentPiece, 0, 0)) {
-    currentPiece.shape = originalShape;
-  } else {
-    playSfx("rotate");
-    if (!collides(board, currentPiece, 0, 1)) {
-      grounded = false;
-      lockElapsed = 0;
-    }
+  playSfx("rotate");
+  if (!collides(board, currentPiece, 0, 1)) {
+    grounded = false;
+    lockElapsed = 0;
   }
 }
 
