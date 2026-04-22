@@ -4,6 +4,10 @@
   "Si že Kristjanu danes povedala da ga imaš neizmerno rada?",
   "Tudi če si danes zmrda... Jutri je nov dan, in si lahko Smrketa!",
   "Si danes že pozdravila Bineta? Veš, da potrebuje tvojo toplino...",
+  "Ko si jezna z mano se spomni, da bi lahko bila v Bau na šihtu...",
+  "En pepsi na dan odžene zdravnika... Kam?",
+  "Friendly reminder, da malo pomisliš na svojga 4-nožnega francoza.",
+  "Danes pač gresta na Feri-ja. Jbg pač ma rad suhega pšanca pa riž."
 ];
 
 function setRandomQuote() {
