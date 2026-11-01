@@ -35,7 +35,6 @@ const linesEl = document.getElementById("lines-value");
 const levelEl = document.getElementById("level-value");
 
 const startBtn = document.getElementById("start-btn");
-const pauseBtn = document.getElementById("pause-btn");
 const restartBtn = document.getElementById("restart-btn");
 
 const overlay = document.getElementById("overlay");
@@ -80,7 +79,13 @@ function setOverlay(visible, title, message, showRestart = false) {
   if (title !== undefined) overlayTitle.textContent = title;
   if (message !== undefined) overlayMessage.textContent = message;
 
-  overlayRestartBtn.style.display = showRestart ? "inline-flex" : "none";
+  overlayRestartBtn.style.display = showRestart ? "block" : "none";
+}
+
+// One main button: Start before a game, Pause while playing, Resume when paused.
+function syncStartButton() {
+  const label = !running || gameOver ? "Start" : isPaused ? "Resume" : "Pause";
+  if (startBtn.textContent !== label) startBtn.textContent = label;
 }
 
 setOverlay(true, "Paused", "Press Start to begin");
@@ -102,6 +107,8 @@ const TETROMINO_COLORS = Object.freeze({
   T: "#A855F7", // purple
 });
 
+// Each piece sits in its standard rotation box (I 4x4, O 2x2, others 3x3),
+// so turning keeps it in place instead of drifting.
 const PIECE_DEFS = {
   I: {
     id: 1,
@@ -115,55 +122,48 @@ const PIECE_DEFS = {
   O: {
     id: 2,
     shape: [
-      [0, 2, 2, 0],
-      [0, 2, 2, 0],
-      [0, 0, 0, 0],
-      [0, 0, 0, 0],
+      [2, 2],
+      [2, 2],
     ],
   },
   T: {
     id: 3,
     shape: [
-      [0, 3, 0, 0],
-      [3, 3, 3, 0],
-      [0, 0, 0, 0],
-      [0, 0, 0, 0],
+      [0, 3, 0],
+      [3, 3, 3],
+      [0, 0, 0],
     ],
   },
   S: {
     id: 4,
     shape: [
-      [0, 4, 4, 0],
-      [4, 4, 0, 0],
-      [0, 0, 0, 0],
-      [0, 0, 0, 0],
+      [0, 4, 4],
+      [4, 4, 0],
+      [0, 0, 0],
     ],
   },
   Z: {
     id: 5,
     shape: [
-      [5, 5, 0, 0],
-      [0, 5, 5, 0],
-      [0, 0, 0, 0],
-      [0, 0, 0, 0],
+      [5, 5, 0],
+      [0, 5, 5],
+      [0, 0, 0],
     ],
   },
   J: {
     id: 6,
     shape: [
-      [6, 0, 0, 0],
-      [6, 6, 6, 0],
-      [0, 0, 0, 0],
-      [0, 0, 0, 0],
+      [6, 0, 0],
+      [6, 6, 6],
+      [0, 0, 0],
     ],
   },
   L: {
     id: 7,
     shape: [
-      [0, 0, 7, 0],
-      [7, 7, 7, 0],
-      [0, 0, 0, 0],
-      [0, 0, 0, 0],
+      [0, 0, 7],
+      [7, 7, 7],
+      [0, 0, 0],
     ],
   },
 };
@@ -288,7 +288,7 @@ function resetGame() {
   displayScore = 0;
   clearFx = null;
   lockFx = null;
-  trailFx = null;
+  beamFx = null;
   sparks = [];
   updateStats();
   setOverlay(false);
@@ -454,14 +454,14 @@ function clearLines() {
 /* ---- Feedback effects (drawing only; game logic is unchanged) ---- */
 const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 const FX = Object.freeze({
-  trailAlpha: 0.16,
-  trailRows: 3,
-  trailMs: 140,
-  lockAlpha: 0.32,
-  lockMs: 120,
+  beamAlpha: 0.3,
+  beamMs: 270,
+  beamSpecks: 6,
+  lockAlpha: 0.5,
+  lockMs: 90,
   landingSparks: 3,
-  clearGlowAlpha: 0.45,
-  clearGlowMs: 70,
+  clearGlowAlpha: 0.8,
+  clearGlowMs: 60,
   clearSweepMs: 240,
   settleMs: 170,
   calloutMs: 850,
@@ -472,7 +472,7 @@ const CALLOUT_LABELS = { 2: "DOUBLE", 3: "TRIPLE", 4: "TETRIS" };
 
 let clearFx = null;
 let lockFx = null;
-let trailFx = null;
+let beamFx = null;
 let sparks = [];
 
 const easeOut = (t) => 1 - Math.pow(1 - t, 4);
@@ -554,11 +554,20 @@ function startLockFx(cells, clearedYs) {
   }
 }
 
+// Centre the piece with its top row just above the board, then step it down
+// one row if there is room, so it is visible straight away.
+function placeAtSpawn(piece) {
+  const width = piece.shape[0].length;
+  const topRow = piece.shape.findIndex((row) => row.some(Boolean));
+  piece.x = Math.floor((COLS - width) / 2);
+  piece.y = -1 - topRow;
+  if (!collides(board, piece, 0, 1)) piece.y++;
+}
+
 function spawnPiece() {
   const nextType = nextQueue.shift();
   currentPiece = createPiece(nextType);
-  currentPiece.x = 3;
-  currentPiece.y = -2;
+  placeAtSpawn(currentPiece);
   nextQueue.push(nextFromBag());
   canHold = true;
   grounded = false;
@@ -575,7 +584,6 @@ function spawnPiece() {
 
 function hardDrop() {
   if (!currentPiece) return;
-  const startY = currentPiece.y;
   let dropDistance = 0;
   while (!collides(board, currentPiece, 0, 1)) {
     currentPiece.y++;
@@ -587,12 +595,8 @@ function hardDrop() {
   }
   playSfx("drop");
   if (dropDistance > 0 && !reducedMotionQuery.matches) {
-    trailFx = {
-      start: performance.now(),
-      cells: getPieceCells(currentPiece),
-      rows: Math.min(FX.trailRows, currentPiece.y - startY),
-      color: getColorForCellValue(currentPiece.id),
-    };
+    beamFx = { start: performance.now(), cells: getPieceCells(currentPiece) };
+    addBeamSpecks(beamFx.cells);
   }
   lockPiece();
 }
@@ -602,7 +606,6 @@ function lockPiece() {
   const lockedCells = getPieceCells(currentPiece);
   mergePiece();
   const clearedYs = clearLines();
-  if (clearedYs.length) trailFx = null;
   startLockFx(lockedCells, clearedYs);
   if (board[0].some((cell) => cell !== 0)) {
     gameOver = true;
@@ -820,12 +823,12 @@ function drawBoard() {
     drawClearSweep(clearElapsed / FX.clearSweepMs, clearElapsed, motion);
   }
 
-  if (trailFx) {
-    const t = (now - trailFx.start) / FX.trailMs;
+  if (beamFx) {
+    const t = (now - beamFx.start) / FX.beamMs;
     if (t >= 1) {
-      trailFx = null;
+      beamFx = null;
     } else {
-      drawTrail(trailFx, FX.trailAlpha * (1 - easeOut(t)));
+      drawBeam(beamFx, FX.beamAlpha * (1 - easeOut(t)));
     }
   }
 
@@ -910,7 +913,9 @@ function drawClearSweep(progress, elapsed, motion) {
       if (progress >= end) {
         if (!clearFx.sparked.has(key)) {
           clearFx.sparked.add(key);
-          addSpark((x + 0.5) * BLOCK_SIZE, (row.y + 0.5) * BLOCK_SIZE, getColorForCellValue(value), false);
+          for (let i = 0; i < clearFx.count; i++) {
+            addSpark((x + 0.5) * BLOCK_SIZE, (row.y + 0.5) * BLOCK_SIZE, getColorForCellValue(value), false);
+          }
         }
         return;
       }
@@ -925,24 +930,42 @@ function drawClearSweep(progress, elapsed, motion) {
   });
 }
 
-function drawTrail(trail, alpha) {
+// Hard drop: a soft light column rises from the landed piece to the top of the board.
+function drawBeam(beam, alpha) {
   const tops = new Map();
-  trail.cells.forEach((cell) => {
+  beam.cells.forEach((cell) => {
     if (!tops.has(cell.x) || tops.get(cell.x) > cell.y) tops.set(cell.x, cell.y);
   });
   ctx.save();
+  ctx.globalAlpha = alpha;
   tops.forEach((topY, x) => {
     const y1 = topY * BLOCK_SIZE;
-    const y0 = Math.max(0, (topY - trail.rows) * BLOCK_SIZE);
-    if (y1 <= y0) return;
-    const g = ctx.createLinearGradient(0, y0, 0, y1);
-    g.addColorStop(0, `${trail.color}00`);
-    g.addColorStop(1, trail.color);
-    ctx.globalAlpha = alpha;
+    if (y1 <= 0) return;
+    const g = ctx.createLinearGradient(0, 0, 0, y1);
+    g.addColorStop(0, "rgba(255,255,255,0)");
+    g.addColorStop(1, "rgba(255,255,255,1)");
     ctx.fillStyle = g;
-    ctx.fillRect(x * BLOCK_SIZE + 6, y0, BLOCK_SIZE - 12, y1 - y0);
+    ctx.fillRect(x * BLOCK_SIZE, 0, BLOCK_SIZE, y1);
   });
   ctx.restore();
+}
+
+function addBeamSpecks(cells) {
+  if (reducedMotionQuery.matches) return;
+  for (let i = 0; i < FX.beamSpecks; i++) {
+    const cell = cells[Math.floor(Math.random() * cells.length)];
+    sparks.push({
+      x: (cell.x + Math.random()) * BLOCK_SIZE,
+      y: cell.y * BLOCK_SIZE - Math.random() * BLOCK_SIZE * 4,
+      vx: 0,
+      vy: -(15 + Math.random() * 20),
+      gravity: 0,
+      life: 0,
+      max: FX.beamMs,
+      color: "#ffffff",
+      r: 0.8 + Math.random() * 0.5,
+    });
+  }
 }
 
 function drawSparks() {
@@ -965,7 +988,7 @@ function updateSparks(delta) {
     spark.life += dt * 1000;
     spark.x += spark.vx * dt;
     spark.y += spark.vy * dt;
-    spark.vy += 220 * dt;
+    spark.vy += (spark.gravity ?? 220) * dt;
   });
   sparks = sparks.filter((spark) => spark.life < spark.max);
 }
@@ -1054,7 +1077,8 @@ function drawHoldPiece() {
 }
 
 function update(time = 0) {
-  const delta = time - lastTime;
+  // Cap the step so coming back to a hidden tab can't jump or instantly lock a piece.
+  const delta = Math.min(time - lastTime, 50);
   lastTime = time;
 
   if (displayScore !== score) {
@@ -1115,6 +1139,7 @@ function update(time = 0) {
     }
   }
 
+  syncStartButton();
   drawBoard();
   drawNextPieces();
   drawHoldPiece();
@@ -1168,8 +1193,7 @@ function handleHold() {
     currentPiece.type = swapped.type;
     currentPiece.id = swapped.id;
     currentPiece.shape = swapped.shape;
-    currentPiece.x = 3;
-    currentPiece.y = -2;
+    placeAtSpawn(currentPiece);
   }
   grounded = false;
   lockElapsed = 0;
@@ -1189,8 +1213,10 @@ function startFromStartScreen() {
   restartGame();
 }
 
-startBtn.addEventListener("click", startGame);
-pauseBtn.addEventListener("click", pauseGame);
+startBtn.addEventListener("click", () => {
+  if (running && !gameOver) pauseGame();
+  else startGame();
+});
 restartBtn.addEventListener("click", restartGame);
 overlayRestartBtn.addEventListener("click", restartGame);
 
@@ -1199,9 +1225,10 @@ startGameBtnMain.addEventListener("click", startFromStartScreen);
 
 document.addEventListener("keydown", (event) => {
   const key = event.key;
+  if (event.target.closest("input, textarea")) return;
 
   if (key === "p" || key === "P") {
-    pauseGame();
+    if (!event.repeat) pauseGame();
     return;
   }
 
@@ -1229,7 +1256,7 @@ document.addEventListener("keydown", (event) => {
       softDropHeld = true;
       break;
     case "ArrowUp":
-      if (!running || isPaused || gameOver) break;
+      if (event.repeat || !running || isPaused || gameOver) break;
       rotateCurrent();
       break;
     case " ":
@@ -1270,6 +1297,27 @@ document.addEventListener("keyup", (event) => {
     default:
       break;
   }
+});
+
+// Leaving the window: forget held keys (their key-up never arrives) and pause.
+function releaseHeldKeys() {
+  leftHeld = false;
+  rightHeld = false;
+  moveDir = 0;
+  dasTimer = 0;
+  arrTimer = 0;
+  softDropHeld = false;
+  softDropTimer = 0;
+}
+
+function pauseOnLeave() {
+  releaseHeldKeys();
+  if (running && !isPaused && !gameOver) pauseGame();
+}
+
+window.addEventListener("blur", pauseOnLeave);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) pauseOnLeave();
 });
 
 resetGame();
