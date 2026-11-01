@@ -286,13 +286,21 @@ function resetGame() {
   grounded = false;
   lockElapsed = 0;
   displayScore = 0;
+  clearFx = null;
+  lockFx = null;
+  trailFx = null;
+  sparks = [];
   updateStats();
   setOverlay(false);
 }
 
+function formatNumber(value) {
+  return Math.round(value).toLocaleString("en-US");
+}
+
 function updateStats() {
-  scoreEl.textContent = String(Math.round(displayScore));
-  linesEl.textContent = String(lines);
+  scoreEl.textContent = formatNumber(displayScore);
+  linesEl.textContent = formatNumber(lines);
   levelEl.textContent = String(level);
 }
 
@@ -404,14 +412,18 @@ function mergePiece() {
 
 function clearLines() {
   let cleared = 0;
-  const clearedRows = [];
+  const fullRows = [];
+  for (let y = 0; y < ROWS; y++) {
+    if (board[y].every((cell) => cell !== 0)) {
+      fullRows.push({ y, cells: board[y].slice() });
+    }
+  }
   outer: for (let y = ROWS - 1; y >= 0; y--) {
     for (let x = 0; x < COLS; x++) {
       if (board[y][x] === 0) {
         continue outer;
       }
     }
-    clearedRows.push(y);
     const row = board.splice(y, 1)[0];
     row.fill(0);
     board.unshift(row);
@@ -421,7 +433,8 @@ function clearLines() {
 
   if (cleared > 0) {
     const pointsTable = { 1: 100, 2: 300, 3: 500, 4: 800 };
-    score += (pointsTable[cleared] || 0) * level;
+    const points = (pointsTable[cleared] || 0) * level;
+    score += points;
     lines += cleared;
 
     const newLevel = 1 + Math.floor(lines / 10);
@@ -432,22 +445,112 @@ function clearLines() {
     }
 
     playSfx("clear");
-    startClearFx(cleared, clearedRows);
+    startClearFx(fullRows, points);
     updateStats();
   }
+  return fullRows.map((row) => row.y);
 }
 
-let clearFxMs = 0;
-let clearFxRows = [];
-let shakeMs = 0;
-let shakeStrength = 0;
+/* ---- Feedback effects (drawing only; game logic is unchanged) ---- */
+const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+const FX = Object.freeze({
+  trailAlpha: 0.16,
+  trailRows: 3,
+  trailMs: 140,
+  lockAlpha: 0.32,
+  lockMs: 120,
+  landingSparks: 3,
+  clearGlowAlpha: 0.45,
+  clearGlowMs: 70,
+  clearSweepMs: 240,
+  settleMs: 170,
+  calloutMs: 850,
+  dipPx: 2,
+  dipMs: 120,
+});
+const CALLOUT_LABELS = { 2: "DOUBLE", 3: "TRIPLE", 4: "TETRIS" };
 
-function startClearFx(clearedCount, rows) {
-  clearFxMs = 160;
-  clearFxRows = rows;
-  if (clearedCount >= 3) {
-    shakeMs = 180;
-    shakeStrength = clearedCount === 4 ? 4 : 2.5;
+let clearFx = null;
+let lockFx = null;
+let trailFx = null;
+let sparks = [];
+
+const easeOut = (t) => 1 - Math.pow(1 - t, 4);
+
+function startClearFx(fullRows, points) {
+  const clearedYs = fullRows.map((row) => row.y);
+  const remaining = [];
+  for (let y = 0; y < ROWS; y++) {
+    if (!clearedYs.includes(y)) remaining.push(y);
+  }
+  const shift = Array(ROWS).fill(0);
+  for (let y = fullRows.length; y < ROWS; y++) {
+    shift[y] = y - remaining[y - fullRows.length];
+  }
+  clearFx = {
+    start: performance.now(),
+    rows: fullRows,
+    shift,
+    count: fullRows.length,
+    points,
+    sparked: new Set(),
+  };
+}
+
+// A new piece locked mid-animation: the board has changed, so stop moving rows
+// and dissolving the old ones, but let the call-out finish.
+function finishClearFx() {
+  if (clearFx) clearFx.settled = true;
+}
+
+function addSpark(x, y, color, up) {
+  if (reducedMotionQuery.matches) return;
+  const angle = up ? -Math.PI / 2 + (Math.random() - 0.5) * 2.4 : Math.random() * Math.PI * 2;
+  const speed = 18 + Math.random() * 27;
+  sparks.push({
+    x,
+    y,
+    vx: Math.cos(angle) * speed,
+    vy: Math.sin(angle) * speed - (up ? 12 : 20),
+    life: 0,
+    max: 200 + Math.random() * 100,
+    color: Math.random() < (up ? 0.4 : 0.7) ? "#ffffff" : color,
+    r: 0.8 + Math.random() * 0.9,
+  });
+}
+
+function getPieceCells(piece) {
+  const cells = [];
+  piece.shape.forEach((row, y) =>
+    row.forEach((filled, x) => {
+      if (filled) cells.push({ x: piece.x + x, y: piece.y + y, id: piece.id });
+    })
+  );
+  return cells;
+}
+
+function startLockFx(cells, clearedYs) {
+  const visible = [];
+  cells.forEach((cell) => {
+    if (cell.y < 0 || clearedYs.includes(cell.y)) return;
+    const below = clearedYs.filter((y) => y > cell.y).length;
+    visible.push({ x: cell.x, y: cell.y + below, id: cell.id });
+  });
+  lockFx = { start: performance.now(), cells: visible };
+
+  const bottoms = new Map();
+  visible.forEach((cell) => {
+    if (!bottoms.has(cell.x) || bottoms.get(cell.x).y < cell.y) bottoms.set(cell.x, cell);
+  });
+  const edge = [...bottoms.values()];
+  for (let i = 0; i < FX.landingSparks && edge.length; i++) {
+    const cell = edge[Math.floor(Math.random() * edge.length)];
+    addSpark(
+      (cell.x + 0.2 + Math.random() * 0.6) * BLOCK_SIZE,
+      (cell.y + 1) * BLOCK_SIZE - 2,
+      getColorForCellValue(cell.id),
+      true
+    );
   }
 }
 
@@ -466,12 +569,13 @@ function spawnPiece() {
     running = false;
     isPaused = true;
     addLeaderboardEntry(playerName, score, lines, level);
-    setOverlay(true, "Game Over", `Final score: ${score}`, true);
+    setOverlay(true, "Game Over", `Final score: ${formatNumber(score)}`, true);
   }
 }
 
 function hardDrop() {
   if (!currentPiece) return;
+  const startY = currentPiece.y;
   let dropDistance = 0;
   while (!collides(board, currentPiece, 0, 1)) {
     currentPiece.y++;
@@ -482,18 +586,30 @@ function hardDrop() {
     updateStats();
   }
   playSfx("drop");
+  if (dropDistance > 0 && !reducedMotionQuery.matches) {
+    trailFx = {
+      start: performance.now(),
+      cells: getPieceCells(currentPiece),
+      rows: Math.min(FX.trailRows, currentPiece.y - startY),
+      color: getColorForCellValue(currentPiece.id),
+    };
+  }
   lockPiece();
 }
 
 function lockPiece() {
+  finishClearFx();
+  const lockedCells = getPieceCells(currentPiece);
   mergePiece();
-  clearLines();
+  const clearedYs = clearLines();
+  if (clearedYs.length) trailFx = null;
+  startLockFx(lockedCells, clearedYs);
   if (board[0].some((cell) => cell !== 0)) {
     gameOver = true;
     running = false;
     isPaused = true;
     addLeaderboardEntry(playerName, score, lines, level);
-    setOverlay(true, "Game Over", `Final score: ${score}`, true);
+    setOverlay(true, "Game Over", `Final score: ${formatNumber(score)}`, true);
     return;
   }
   spawnPiece();
@@ -577,37 +693,62 @@ function rotateCurrent() {
   }
 }
 
-function drawCell(context, x, y, value, size) {
+const shineCache = new WeakMap();
+
+function getShine(context, size) {
+  let bySize = shineCache.get(context);
+  if (!bySize) {
+    bySize = new Map();
+    shineCache.set(context, bySize);
+  }
+  const key = Math.round(size * 10);
+  let shine = bySize.get(key);
+  if (!shine) {
+    shine = context.createLinearGradient(0, 0, 0, size);
+    shine.addColorStop(0, "rgba(255,255,255,0.34)");
+    shine.addColorStop(0.46, "rgba(255,255,255,0.12)");
+    shine.addColorStop(0.52, "rgba(255,255,255,0)");
+    shine.addColorStop(1, "rgba(0,0,0,0.12)");
+    bySize.set(key, shine);
+  }
+  return shine;
+}
+
+// Bevelled block with a soft gloss and a faint glow. `scale` shrinks it in place.
+function drawCell(context, x, y, value, size, scale = 1) {
   if (!value) return;
   const color = getColorForCellValue(value);
-  const px = x * size;
-  const py = y * size;
-
-  const gradKey = `${value}-${size}`;
-  drawCell._gradCache ||= new Map();
-  const cache = drawCell._gradCache;
-  let fill = cache.get(gradKey);
-  if (!fill) {
-    const g = context.createLinearGradient(0, 0, size, size);
-    g.addColorStop(0, "rgba(255,255,255,0.9)");
-    g.addColorStop(0.2, color);
-    g.addColorStop(1, color);
-    fill = g;
-    cache.set(gradKey, fill);
-  }
+  const inner = (size - 2) * scale;
+  const px = x * size + (size - inner) / 2;
+  const py = y * size + (size - inner) / 2;
+  const edge = Math.max(1.5, inner * 0.11);
 
   context.save();
-  context.shadowColor = color;
-  context.shadowBlur = 12;
-  context.fillStyle = fill;
-  context.fillRect(px + 1, py + 1, size - 2, size - 2);
-  context.fillStyle = "rgba(255,255,255,0.16)";
-  context.fillRect(px + 2, py + 2, size - 6, Math.max(2, size * 0.22));
+  context.translate(px, py);
+  context.shadowColor = `${color}66`;
+  context.shadowBlur = size * 0.22;
+  context.fillStyle = color;
+  context.fillRect(0, 0, inner, inner);
+  context.shadowBlur = 0;
+  context.fillStyle = getShine(context, inner);
+  context.fillRect(0, 0, inner, inner);
+  context.fillStyle = "rgba(255,255,255,0.4)";
+  context.fillRect(0, 0, inner, edge);
+  context.fillRect(0, 0, edge, inner);
+  context.fillStyle = "rgba(0,0,0,0.28)";
+  context.fillRect(0, inner - edge, inner, edge);
+  context.fillRect(inner - edge, 0, edge, inner);
   context.restore();
+}
 
-  context.strokeStyle = "rgba(15,23,42,0.78)";
-  context.lineWidth = 1;
-  context.strokeRect(px + 0.5, py + 0.5, size - 1, size - 1);
+function drawWhite(context, x, y, size, alpha, scale = 1) {
+  if (alpha <= 0) return;
+  const inner = (size - 2) * scale;
+  context.save();
+  context.globalAlpha *= alpha;
+  context.fillStyle = "#ffffff";
+  context.fillRect(x * size + (size - inner) / 2, y * size + (size - inner) / 2, inner, inner);
+  context.restore();
 }
 
 function drawGhostCell(context, x, y, value, size) {
@@ -646,19 +787,55 @@ function drawGridLines(context, cols, rows, size) {
 function drawBoard() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+  const now = performance.now();
+  const motion = !reducedMotionQuery.matches;
+  const clearElapsed = clearFx ? now - clearFx.start : 0;
+  if (clearFx && clearElapsed > FX.clearSweepMs + Math.max(FX.settleMs, FX.calloutMs, FX.dipMs)) {
+    clearFx = null;
+  }
+
   ctx.save();
-  if (shakeMs > 0) {
-    const t = performance.now();
-    const dx = (Math.sin(t * 0.22) * shakeStrength) | 0;
-    const dy = (Math.cos(t * 0.18) * shakeStrength) | 0;
-    ctx.translate(dx, dy);
+  if (clearFx && motion && clearFx.count >= 3) {
+    const dipT = (clearElapsed - FX.clearSweepMs) / FX.dipMs;
+    if (dipT > 0 && dipT < 1) ctx.translate(0, Math.sin(dipT * Math.PI) * FX.dipPx);
   }
 
   drawGridLines(ctx, COLS, ROWS, BLOCK_SIZE);
 
+  // While a clear plays, the rows above start where they were and glide down.
+  let settle = 1;
+  if (clearFx && motion && !clearFx.settled) {
+    settle = clearElapsed < FX.clearSweepMs
+      ? 0
+      : easeOut(Math.min(1, (clearElapsed - FX.clearSweepMs) / FX.settleMs));
+  }
   for (let y = 0; y < ROWS; y++) {
+    const drawY = clearFx && !clearFx.settled ? y - clearFx.shift[y] * (1 - settle) : y;
     for (let x = 0; x < COLS; x++) {
-      drawCell(ctx, x, y, board[y][x], BLOCK_SIZE);
+      drawCell(ctx, x, drawY, board[y][x], BLOCK_SIZE);
+    }
+  }
+
+  if (clearFx && !clearFx.settled && clearElapsed < FX.clearSweepMs) {
+    drawClearSweep(clearElapsed / FX.clearSweepMs, clearElapsed, motion);
+  }
+
+  if (trailFx) {
+    const t = (now - trailFx.start) / FX.trailMs;
+    if (t >= 1) {
+      trailFx = null;
+    } else {
+      drawTrail(trailFx, FX.trailAlpha * (1 - easeOut(t)));
+    }
+  }
+
+  if (lockFx) {
+    const t = (now - lockFx.start) / FX.lockMs;
+    if (t >= 1) {
+      lockFx = null;
+    } else {
+      const alpha = FX.lockAlpha * (1 - easeOut(t));
+      lockFx.cells.forEach((cell) => drawWhite(ctx, cell.x, cell.y, BLOCK_SIZE, alpha));
     }
   }
 
@@ -712,22 +889,111 @@ function drawBoard() {
     }
   }
 
-  if (clearFxMs > 0 && clearFxRows.length) {
-    ctx.save();
-    const alpha = Math.min(1, clearFxMs / 160) * 0.55;
-    ctx.fillStyle = `rgba(255,255,255,${alpha})`;
-    clearFxRows.forEach((row) => {
-      ctx.fillRect(0, row * BLOCK_SIZE, COLS * BLOCK_SIZE, BLOCK_SIZE);
-    });
-    ctx.restore();
+  drawSparks();
+
+  if (clearFx && clearFx.count >= 2 && clearElapsed < FX.calloutMs) {
+    drawCallout(clearElapsed / FX.calloutMs, motion);
   }
 
   ctx.restore();
 }
 
+// Full rows glow, then dissolve from the middle outwards, each block fading and shrinking a touch.
+function drawClearSweep(progress, elapsed, motion) {
+  const glow = Math.min(1, elapsed / FX.clearGlowMs);
+  clearFx.rows.forEach((row) => {
+    row.cells.forEach((value, x) => {
+      const order = Math.abs(x - (COLS - 1) / 2) / (COLS / 2);
+      const start = 0.15 + order * 0.6;
+      const end = start + 0.3;
+      const key = row.y * COLS + x;
+      if (progress >= end) {
+        if (!clearFx.sparked.has(key)) {
+          clearFx.sparked.add(key);
+          addSpark((x + 0.5) * BLOCK_SIZE, (row.y + 0.5) * BLOCK_SIZE, getColorForCellValue(value), false);
+        }
+        return;
+      }
+      const fade = progress > start ? easeOut((progress - start) / (end - start)) : 0;
+      const scale = motion ? 1 - 0.25 * fade : 1;
+      ctx.save();
+      ctx.globalAlpha = 1 - fade;
+      drawCell(ctx, x, row.y, value, BLOCK_SIZE, scale);
+      ctx.restore();
+      drawWhite(ctx, x, row.y, BLOCK_SIZE, FX.clearGlowAlpha * glow * (1 - fade), scale);
+    });
+  });
+}
+
+function drawTrail(trail, alpha) {
+  const tops = new Map();
+  trail.cells.forEach((cell) => {
+    if (!tops.has(cell.x) || tops.get(cell.x) > cell.y) tops.set(cell.x, cell.y);
+  });
+  ctx.save();
+  tops.forEach((topY, x) => {
+    const y1 = topY * BLOCK_SIZE;
+    const y0 = Math.max(0, (topY - trail.rows) * BLOCK_SIZE);
+    if (y1 <= y0) return;
+    const g = ctx.createLinearGradient(0, y0, 0, y1);
+    g.addColorStop(0, `${trail.color}00`);
+    g.addColorStop(1, trail.color);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = g;
+    ctx.fillRect(x * BLOCK_SIZE + 6, y0, BLOCK_SIZE - 12, y1 - y0);
+  });
+  ctx.restore();
+}
+
+function drawSparks() {
+  if (!sparks.length) return;
+  ctx.save();
+  sparks.forEach((spark) => {
+    ctx.globalAlpha = (1 - spark.life / spark.max) * 0.9;
+    ctx.fillStyle = spark.color;
+    ctx.beginPath();
+    ctx.arc(spark.x, spark.y, spark.r, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.restore();
+}
+
+function updateSparks(delta) {
+  if (!sparks.length) return;
+  const dt = Math.min(delta, 50) / 1000;
+  sparks.forEach((spark) => {
+    spark.life += dt * 1000;
+    spark.x += spark.vx * dt;
+    spark.y += spark.vy * dt;
+    spark.vy += 220 * dt;
+  });
+  sparks = sparks.filter((spark) => spark.life < spark.max);
+}
+
+// "Double", "Triple", "Tetris" fades in just above the middle of the board, then fades out.
+function drawCallout(t, motion) {
+  const appear = easeOut(Math.min(1, t / 0.2));
+  const alpha = t < 0.2 ? appear : t > 0.7 ? 1 - (t - 0.7) / 0.3 : 1;
+  const scale = motion ? 0.92 + 0.08 * appear : 1;
+  const rise = motion ? t * 6 : 0;
+  ctx.save();
+  ctx.translate((COLS * BLOCK_SIZE) / 2, 8 * BLOCK_SIZE - rise);
+  ctx.scale(scale, scale);
+  ctx.globalAlpha = alpha;
+  ctx.textAlign = "center";
+  ctx.font = '14px "Press Start 2P", monospace';
+  ctx.fillStyle = "rgba(13,11,30,0.7)";
+  ctx.fillText(CALLOUT_LABELS[clearFx.count], 0, 2);
+  ctx.fillStyle = "#ffd84d";
+  ctx.fillText(CALLOUT_LABELS[clearFx.count], 0, 0);
+  ctx.font = '8px "Press Start 2P", monospace';
+  ctx.fillStyle = "rgba(255,122,198,0.9)";
+  ctx.fillText(`+${formatNumber(clearFx.points)}`, 0, 18);
+  ctx.restore();
+}
+
 function drawMiniPiece(context, piece) {
   context.clearRect(0, 0, MINI_CANVAS_SIZE, MINI_CANVAS_SIZE);
-  drawGridLines(context, MINI_GRID_SIZE, MINI_GRID_SIZE, MINI_CELL_SIZE);
   if (!piece) return;
   const { shape, id } = piece;
   let minX = shape[0].length;
@@ -798,17 +1064,10 @@ function update(time = 0) {
     if (Math.sign(score - displayScore) !== Math.sign(diff)) {
       displayScore = score;
     }
-    scoreEl.textContent = String(Math.round(displayScore));
+    scoreEl.textContent = formatNumber(displayScore);
   }
 
-  if (clearFxMs > 0) {
-    clearFxMs = Math.max(0, clearFxMs - delta);
-    if (clearFxMs === 0) clearFxRows = [];
-  }
-  if (shakeMs > 0) {
-    shakeMs = Math.max(0, shakeMs - delta);
-    if (shakeMs === 0) shakeStrength = 0;
-  }
+  updateSparks(delta);
 
   if (running && !isPaused && !gameOver) {
     dropAccumulator += delta;

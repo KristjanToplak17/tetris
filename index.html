@@ -16,6 +16,7 @@
     <section id="start-screen" class="start-screen">
       <div class="start-card">
         <h2 class="start-title">Player Select</h2>
+        <div class="screen start-body">
         <label class="field">
           <span class="field-label">Name</span>
           <input
@@ -34,16 +35,15 @@
           <h3 class="leaderboard-title">High Scores</h3>
           <ol id="leaderboard-list" class="leaderboard-list"></ol>
         </section>
+        </div>
       </div>
     </section>
 
     <div id="game-root" class="game-root">
       <div class="app">
         <header class="app-header">
-          <h1 class="app-title">
-            <span class="title-emoji">🐣</span> Tetris za Majo <span class="title-emoji">🐣</span>
-          </h1>
-          <p class="app-subtitle">Z ljubeznijo tvoj najljubši fant.</p>
+          <h1 class="app-title">Tetris</h1>
+          <p class="app-subtitle">Ready? Stack. Clear.</p>
         </header>
 
         <main class="app-main">
@@ -51,52 +51,49 @@
             <aside class="side-panel side-panel--left">
               <div class="panel hold-panel">
                 <h2>Hold</h2>
-                <canvas
-                  id="hold-canvas"
-                  width="96"
-                  height="96"
-                  aria-label="Held piece"
-                ></canvas>
+                <div class="screen screen--mini">
+                  <canvas
+                    id="hold-canvas"
+                    width="96"
+                    height="96"
+                    aria-label="Held piece"
+                  ></canvas>
+                </div>
               </div>
 
               <div class="panel stats-panel">
-                <h2>Stats</h2>
-                <div class="stat-row">
-                  <span>Score</span>
-                  <span id="score-value">0</span>
-                </div>
-                <div class="stat-row">
-                  <span>Lines</span>
-                  <span id="lines-value">0</span>
-                </div>
-                <div class="stat-row">
-                  <span>Level</span>
-                  <span id="level-value">1</span>
-                </div>
+                <h2 class="stat-label">Score</h2>
+                <div id="score-value" class="stat-value">0</div>
+                <h2 class="stat-label">Level</h2>
+                <div id="level-value" class="stat-value">1</div>
+                <h2 class="stat-label">Lines</h2>
+                <div id="lines-value" class="stat-value">0</div>
               </div>
             </aside>
 
             <div class="board-panel">
-              <canvas
-                id="game-canvas"
-                width="200"
-                height="400"
-                aria-label="Tetris game board"
-              ></canvas>
-
-              <div class="panel controls-panel controls-panel--compact">
-                <div class="button-row">
-                  <button id="start-btn" type="button">Start</button>
-                  <button id="pause-btn" type="button">Pause</button>
-                  <button id="restart-btn" type="button">Restart</button>
+              <div class="panel panel--board">
+                <div class="screen">
+                  <canvas
+                    id="game-canvas"
+                    width="200"
+                    height="400"
+                    aria-label="Tetris game board"
+                  ></canvas>
                 </div>
+              </div>
+
+              <div class="button-row">
+                <button id="start-btn" type="button">Start</button>
+                <button id="pause-btn" type="button">Pause</button>
+                <button id="restart-btn" type="button">Restart</button>
               </div>
             </div>
 
             <aside class="side-panel side-panel--right">
               <div class="panel preview-panel">
                 <h2>Next</h2>
-                <div class="next-grid">
+                <div class="screen next-grid">
                   <canvas
                     id="next1-canvas"
                     width="96"
@@ -120,7 +117,7 @@
 
               <div class="panel controls-panel controls-panel--help">
                 <h2>Controls</h2>
-                <ul class="controls-list">
+                <ul class="screen controls-list">
                   <li>← / → : Move</li>
                   <li>↑ : Rotate</li>
                   <li>↓ / PgDn : Soft drop</li>
