@@ -454,11 +454,11 @@ function clearLines() {
 /* ---- Feedback effects (drawing only; game logic is unchanged) ---- */
 const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 const FX = Object.freeze({
-  beamAlpha: 0.3,
-  beamMs: 270,
-  beamSpecks: 6,
-  lockAlpha: 0.5,
-  lockMs: 90,
+  beamAlpha: 0.14,
+  beamMs: 200,
+  beamSpecks: 3,
+  lockAlpha: 0.25,
+  lockMs: 80,
   landingSparks: 3,
   clearGlowAlpha: 0.8,
   clearGlowMs: 60,
